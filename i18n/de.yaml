@@ -1,0 +1,11 @@
+agent:
+  name: PDF Creator
+  description: Erstellt zuverlaessige, strukturierte PDF-Berichte aus Prompts und Recherche.
+  long_description: Dieser Agent plant die Dokumentstruktur, nutzt template-basierte Qualitaetspruefungen, erzeugt formatierte PDFs mit optionalen Bildern und uebergibt die Datei an kompatible Tools und Agenten.
+
+capabilities:
+  pdf:
+    tools:
+      create_pdf_document:
+        display_name: PDF erstellen
+        description: Erzeugt einen PDF-Bericht aus Abschnitten, optionalen Quellenlinks und optionalen Bildern.

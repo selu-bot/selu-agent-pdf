@@ -1,0 +1,11 @@
+agent:
+  name: PDF Creator
+  description: Creates reliable, structured PDF reports from prompts and research notes.
+  long_description: This agent plans document structure, applies template-based quality checks, generates formatted PDFs with optional images, and hands off the resulting file to compatible tools and agents.
+
+capabilities:
+  pdf:
+    tools:
+      create_pdf_document:
+        display_name: Create PDF document
+        description: Build a PDF report from sections, optional source links, and optional images.

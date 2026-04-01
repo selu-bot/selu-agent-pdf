@@ -1,0 +1,89 @@
+id: pdf
+class: tool
+image: selu-cap-pdf:latest
+
+tools:
+  - name: create_pdf_document
+    description: >
+      Create a formatted PDF document from structured content. Use canonical
+      section keys only: sections[].heading and sections[].content (both plain
+      text). In section content, prefer paragraph blocks separated by blank
+      lines and list items prefixed with "-" or "*". Supports template-aware
+      quality checks via `template` and `strict_mode`. Returns an artifact
+      reference that can be attached in later email tool calls.
+    input_schema:
+      type: object
+      properties:
+        title:
+          type: string
+          description: "Main report title shown on the cover and first page"
+        summary:
+          type: string
+          description: "Optional short intro paragraph"
+        template:
+          type: string
+          description: "Optional quality template: generic, city_profile, research_summary, project_status"
+          enum:
+            - generic
+            - city_profile
+            - research_summary
+            - project_status
+        strict_mode:
+          type: boolean
+          description: "If true, the tool fails when template quality requirements are not met."
+        require_images:
+          type: boolean
+          description: "If true, at least one image must be requested and successfully added, otherwise the tool fails."
+        sections:
+          type: array
+          description: "Main report sections in reading order. Each section must use heading + content keys."
+          items:
+            type: object
+            properties:
+              heading:
+                type: string
+                description: "Section heading (non-empty plain text)"
+              content:
+                type: string
+                description: "Section body text (plain text only; blank lines split paragraphs; list lines can start with - or *)"
+            required:
+              - heading
+              - content
+        source_urls:
+          type: array
+          description: "Optional list of source links to include at the end"
+          items:
+            type: string
+        image_urls:
+          type: array
+          description: "Optional list of image URLs to download and place in the PDF"
+          items:
+            type: string
+        author:
+          type: string
+          description: "Optional author line"
+        filename:
+          type: string
+          description: "Optional output filename (must end with .pdf)"
+      required:
+        - title
+        - sections
+    recommended_policy: allow
+
+network:
+  mode: any
+
+filesystem: temp
+
+credentials: []
+
+resources:
+  max_memory_mb: 512
+  max_cpu_fraction: 0.8
+  max_cpu_seconds: 120
+  pids_limit: 64
+
+sharing:
+  mode: shared
+  max_concurrent: 4
+  idle_timeout_seconds: 600

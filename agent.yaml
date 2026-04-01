@@ -1,0 +1,11 @@
+id: pdf
+name: PDF Creator
+i18n:
+  default_locale: en
+  supported_locales:
+    - en
+    - de
+routing: delegate
+session:
+  trigger: mention
+  idle_timeout_minutes: 60
