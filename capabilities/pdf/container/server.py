@@ -16,26 +16,14 @@ from datetime import datetime, timezone
 from concurrent import futures
 from urllib.parse import urlparse
 from uuid import uuid4
+import base64
 from xml.sax.saxutils import escape
 
 import grpc
 import requests
+import weasyprint
+from jinja2 import Template
 from PIL import Image as PilImage
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.platypus import (
-    Image as PdfImage,
-    ListFlowable,
-    ListItem,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 
 import capability_pb2
 import capability_pb2_grpc
@@ -71,14 +59,13 @@ TEMPLATE_REQUIREMENTS = {
     ],
 }
 
-THEME = {
-    "ink": colors.HexColor("#0f172a"),
-    "muted": colors.HexColor("#475569"),
-    "soft": colors.HexColor("#64748b"),
-    "accent": colors.HexColor("#0f766e"),
-    "accent_soft": colors.HexColor("#99f6e4"),
-    "rule": colors.HexColor("#cbd5e1"),
+THEMES = {
+    "generic": {"accent": "#0f766e", "accent_light": "#ccfbf1", "accent_mid": "#99f6e4"},
+    "city_profile": {"accent": "#d97706", "accent_light": "#fef3c7", "accent_mid": "#fde68a"},
+    "research_summary": {"accent": "#2563eb", "accent_light": "#dbeafe", "accent_mid": "#93c5fd"},
+    "project_status": {"accent": "#4f46e5", "accent_light": "#e0e7ff", "accent_mid": "#a5b4fc"},
 }
+THEME_DEFAULTS = {"ink": "#0f172a", "muted": "#475569", "soft": "#64748b", "rule": "#cbd5e1"}
 
 
 def _is_public_host(hostname: str) -> bool:
@@ -156,90 +143,215 @@ def _fetch_image(url: str) -> bytes:
         return out.getvalue()
 
 
-def _styles() -> dict[str, ParagraphStyle]:
-    base = getSampleStyleSheet()
-    return {
-        "title": ParagraphStyle(
-            "TitleCustom",
-            parent=base["Title"],
-            fontName="Helvetica-Bold",
-            fontSize=28,
-            leading=33,
-            textColor=THEME["ink"],
-            spaceAfter=12,
-        ),
-        "author": ParagraphStyle(
-            "Author",
-            parent=base["Normal"],
-            fontName="Helvetica-Bold",
-            fontSize=10.5,
-            leading=14,
-            textColor=THEME["accent"],
-            spaceAfter=4,
-        ),
-        "meta": ParagraphStyle(
-            "Meta",
-            parent=base["Normal"],
-            fontSize=9.5,
-            leading=13,
-            textColor=THEME["soft"],
-            spaceAfter=0,
-        ),
-        "summary": ParagraphStyle(
-            "Summary",
-            parent=base["BodyText"],
-            fontSize=11.2,
-            leading=16.5,
-            textColor=THEME["muted"],
-            spaceAfter=10,
-        ),
-        "h2": ParagraphStyle(
-            "H2Custom",
-            parent=base["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=15.5,
-            leading=21,
-            textColor=THEME["ink"],
-            spaceBefore=14,
-            spaceAfter=7,
-        ),
-        "body": ParagraphStyle(
-            "BodyCustom",
-            parent=base["BodyText"],
-            fontSize=10.8,
-            leading=16,
-            textColor=THEME["ink"],
-            spaceAfter=6,
-        ),
-        "bullet": ParagraphStyle(
-            "BulletCustom",
-            parent=base["BodyText"],
-            fontSize=10.5,
-            leading=15,
-            textColor=THEME["ink"],
-            leftIndent=2,
-            firstLineIndent=0,
-            spaceAfter=2,
-        ),
-        "small_h2": ParagraphStyle(
-            "SmallH2",
-            parent=base["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=12.5,
-            leading=16,
-            textColor=THEME["ink"],
-            spaceBefore=3,
-            spaceAfter=5,
-        ),
-        "source": ParagraphStyle(
-            "SourceCustom",
-            parent=base["BodyText"],
-            fontSize=9.4,
-            leading=14,
-            textColor=THEME["muted"],
-            spaceAfter=4,
-        ),
-    }
+HTML_TEMPLATE = Template("""\
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<style>
+@page {
+  size: A4;
+  margin: 2.2cm 2cm 2.4cm 2cm;
+  @bottom-left {
+    content: "{{ title_short }}";
+    font-family: "Inter", sans-serif;
+    font-size: 8pt;
+    color: {{ muted }};
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 65%;
+  }
+  @bottom-right {
+    content: "Page " counter(page);
+    font-family: "Inter", sans-serif;
+    font-size: 8pt;
+    color: {{ soft }};
+    white-space: nowrap;
+  }
+  @bottom-center {
+    content: "";
+    border-top: 0.5pt solid {{ rule }};
+    width: 100%;
+  }
+}
+@page :first {
+  @bottom-left { content: none; }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Inter", "Helvetica Neue", sans-serif;
+  font-size: 10.8pt;
+  line-height: 1.55;
+  color: {{ ink }};
+}
+.cover {
+  margin-bottom: 1.2em;
+}
+.cover-bar {
+  border-left: 4.5px solid {{ accent }};
+  padding-left: 14px;
+}
+.cover h1 {
+  font-size: 26pt;
+  font-weight: 700;
+  line-height: 1.18;
+  color: {{ ink }};
+  margin-bottom: 0.15em;
+}
+.cover .author {
+  font-size: 10.5pt;
+  font-weight: 600;
+  color: {{ accent }};
+  margin-bottom: 0.1em;
+}
+.cover .meta {
+  font-size: 9pt;
+  color: {{ soft }};
+}
+.cover .summary {
+  font-size: 11pt;
+  line-height: 1.6;
+  color: {{ muted }};
+  margin-top: 0.8em;
+}
+.cover-image {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-top: 0.9em;
+  margin-bottom: 0.2em;
+}
+section {
+  margin-top: 1em;
+}
+section h2 {
+  font-size: 15pt;
+  font-weight: 700;
+  color: {{ ink }};
+  border-left: 3.5px solid {{ accent }};
+  padding-left: 10px;
+  margin-bottom: 0.45em;
+  page-break-after: avoid;
+}
+p {
+  margin-bottom: 0.55em;
+  orphans: 3;
+  widows: 3;
+}
+ul, ol {
+  margin-left: 1.4em;
+  margin-bottom: 0.55em;
+}
+li {
+  margin-bottom: 0.18em;
+}
+li::marker {
+  color: {{ accent }};
+}
+blockquote {
+  background: {{ accent_light }};
+  border-left: 3.5px solid {{ accent }};
+  border-radius: 0 5px 5px 0;
+  padding: 0.65em 0.9em;
+  margin: 0.6em 0;
+  font-size: 10.5pt;
+  color: {{ ink }};
+}
+blockquote p { margin-bottom: 0.2em; }
+strong { font-weight: 700; }
+em { font-style: italic; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 10pt;
+}
+thead th {
+  background: {{ accent_light }};
+  color: {{ ink }};
+  font-weight: 700;
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1.5px solid {{ accent_mid }};
+}
+tbody td {
+  padding: 5px 8px;
+  border-bottom: 0.5px solid {{ rule }};
+}
+tbody tr:nth-child(even) td {
+  background: #f8fafc;
+}
+figure {
+  margin: 0.7em 0;
+  text-align: center;
+  page-break-inside: avoid;
+}
+figure img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 5px;
+}
+figcaption {
+  font-size: 8.5pt;
+  color: {{ soft }};
+  margin-top: 0.25em;
+}
+.sources {
+  margin-top: 1.5em;
+  padding-top: 0.7em;
+  border-top: 0.5px solid {{ rule }};
+}
+.sources h2 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: {{ muted }};
+  border-left: none;
+  padding-left: 0;
+  margin-bottom: 0.3em;
+}
+.sources a {
+  display: block;
+  font-size: 8.8pt;
+  color: {{ accent }};
+  text-decoration: none;
+  margin-bottom: 0.12em;
+  word-break: break-all;
+}
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="cover-bar">
+    <h1>{{ title }}</h1>
+    {% if author %}<div class="author">{{ author }}</div>{% endif %}
+    <div class="meta">{{ generated }}</div>
+  </div>
+  {% if summary %}<p class="summary">{{ summary }}</p>{% endif %}
+  {% if cover_image %}<img class="cover-image" src="{{ cover_image }}" alt="">{% endif %}
+</div>
+{% for sec in sections %}
+<section>
+  {% if sec.heading %}<h2>{{ sec.heading }}</h2>{% endif %}
+  {{ sec.content_html }}
+  {% for img in sec.images %}
+  <figure>
+    <img src="{{ img.src }}" alt="">
+    {% if img.caption %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
+  </figure>
+  {% endfor %}
+</section>
+{% endfor %}
+{% if source_urls %}
+<div class="sources">
+  <h2>Sources</h2>
+  {% for src in source_urls %}<a href="{{ src }}">{{ src }}</a>{% endfor %}
+</div>
+{% endif %}
+</body>
+</html>
+""")
 
 
 def _coerce_text(value) -> str:
@@ -362,80 +474,120 @@ def _parse_markdown_table_block(block: str) -> list[list[str]]:
     return normalized
 
 
-def _build_section_flowables(heading: str, content: str, s: dict[str, ParagraphStyle]):
-    flow = []
-    safe_heading = _safe_para_text(heading)
-    if safe_heading:
-        flow.append(Paragraph(safe_heading, s["h2"]))
+def _inline_md(text: str) -> str:
+    """Convert **bold** and *italic* markers to HTML tags."""
+    out = escape(text, {'"': "&quot;"})
+    out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
+    out = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<em>\1</em>", out)
+    return out
 
+
+def _render_content_html(content: str) -> str:
+    """Convert section content (plain text with lists, tables, blockquotes) to HTML."""
     blocks = _split_content_blocks(content)
     if not blocks:
-        return flow
+        return ""
 
+    parts = []
     for block in blocks:
+        # Markdown table
         table_rows = _parse_markdown_table_block(block)
         if table_rows:
-            data = [[Paragraph(_safe_para_text(cell), s["body"]) for cell in row] for row in table_rows]
-            col_width = 16.5 * cm / max(1, len(table_rows[0]))
-            table = Table(data, colWidths=[col_width] * len(table_rows[0]), hAlign="LEFT")
-            table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), THEME["accent_soft"]),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), THEME["ink"]),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("LINEBELOW", (0, 0), (-1, 0), 0.8, THEME["rule"]),
-                        ("GRID", (0, 0), (-1, -1), 0.45, THEME["rule"]),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                        ("TOPPADDING", (0, 0), (-1, -1), 4),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ]
-                )
-            )
-            flow.append(table)
-            flow.append(Spacer(1, 0.22 * cm))
+            html = "<table><thead><tr>"
+            for cell in table_rows[0]:
+                html += f"<th>{_inline_md(cell)}</th>"
+            html += "</tr></thead><tbody>"
+            for row in table_rows[1:]:
+                html += "<tr>"
+                for cell in row:
+                    html += f"<td>{_inline_md(cell)}</td>"
+                html += "</tr>"
+            html += "</tbody></table>"
+            parts.append(html)
             continue
 
+        # Bullet / numbered list
         list_items = _parse_list_items(block)
         if list_items:
-            items = [ListItem(Paragraph(_safe_para_text(item), s["bullet"])) for item in list_items]
-            flow.append(ListFlowable(items, bulletType="bullet", start="circle", leftIndent=11))
-            flow.append(Spacer(1, 0.16 * cm))
+            # Detect numbered vs bullet
+            first_line = _coerce_text(block.splitlines()[0]) if block.splitlines() else ""
+            is_ordered = bool(re.match(r"^\s*\d+[.)]\s+", first_line))
+            tag = "ol" if is_ordered else "ul"
+            html = f"<{tag}>"
+            for item in list_items:
+                html += f"<li>{_inline_md(item)}</li>"
+            html += f"</{tag}>"
+            parts.append(html)
             continue
 
+        # Blockquote / callout (lines starting with >)
         lines = [_coerce_text(line) for line in block.splitlines() if _coerce_text(line)]
+        if lines and all(line.startswith(">") for line in lines):
+            quote_lines = [_coerce_text(line.lstrip("> ")) for line in lines]
+            inner = " ".join(quote_lines)
+            parts.append(f"<blockquote><p>{_inline_md(inner)}</p></blockquote>")
+            continue
+
+        # Regular paragraph(s)
         merged = _clean_block_text(" ".join(lines))
         if merged:
-            flow.append(Paragraph(_safe_para_text(merged), s["body"]))
+            parts.append(f"<p>{_inline_md(merged)}</p>")
 
-    flow.append(Spacer(1, 0.18 * cm))
-    return flow
+    return "\n".join(parts)
 
 
-def _draw_header_footer(canvas, doc):
-    canvas.saveState()
-    page_no = canvas.getPageNumber()
-    width, height = doc.pagesize
-    left = doc.leftMargin
-    right = width - doc.rightMargin
+def _build_html(
+    title: str,
+    summary: str,
+    author: str,
+    sections: list[dict],
+    source_urls: list[str],
+    template: str,
+    cover_image_b64: str | None,
+    section_images: dict[int, list[dict]],
+) -> str:
+    """Render the Jinja2 HTML template with all data."""
+    theme_colors = THEMES.get(template, THEMES["generic"])
+    generated_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    canvas.setStrokeColor(THEME["rule"])
-    canvas.setLineWidth(0.6)
-    canvas.line(left, doc.bottomMargin - 0.25 * cm, right, doc.bottomMargin - 0.25 * cm)
+    rendered_sections = []
+    for idx, sec in enumerate(sections):
+        heading = _coerce_text(sec.get("heading"))
+        content = _coerce_text(sec.get("content"))
+        rendered_sections.append({
+            "heading": escape(heading) if heading else "",
+            "content_html": _render_content_html(content),
+            "images": section_images.get(idx, []),
+        })
 
-    canvas.setFont("Helvetica", 8.8)
-    canvas.setFillColor(THEME["soft"])
-    canvas.drawRightString(right, doc.bottomMargin - 0.52 * cm, f"Page {page_no}")
+    safe_sources = []
+    if isinstance(source_urls, list):
+        for src in source_urls:
+            if isinstance(src, str) and src.strip():
+                safe_sources.append(escape(src.strip()))
 
-    if page_no > 1:
-        title = _coerce_text(getattr(doc, "_report_title", ""))[:86]
-        canvas.setFont("Helvetica-Bold", 8.8)
-        canvas.setFillColor(THEME["muted"])
-        canvas.drawString(left, height - doc.topMargin + 0.34 * cm, title)
-
-    canvas.restoreState()
+    return HTML_TEMPLATE.render(
+        lang="de" if any(
+            _coerce_text(s.get("heading")).lower().startswith(kw)
+            for s in sections
+            for kw in ("lage", "ueber", "über", "sehens", "geschicht", "partner")
+        ) else "en",
+        title=escape(title),
+        title_short=escape(title[:45]),
+        author=escape(author) if author else "",
+        generated=f"Generated: {generated_dt} UTC",
+        summary=_inline_md(summary) if summary else "",
+        cover_image=cover_image_b64 or "",
+        sections=rendered_sections,
+        source_urls=safe_sources,
+        accent=theme_colors["accent"],
+        accent_light=theme_colors["accent_light"],
+        accent_mid=theme_colors["accent_mid"],
+        ink=THEME_DEFAULTS["ink"],
+        muted=THEME_DEFAULTS["muted"],
+        soft=THEME_DEFAULTS["soft"],
+        rule=THEME_DEFAULTS["rule"],
+    )
 
 
 def _parse_sections_from_text(text: str) -> list[dict[str, str]]:
@@ -965,27 +1117,7 @@ def _build_pdf(args: dict) -> tuple[bytes, dict]:
     if not filename.lower().endswith(".pdf"):
         filename = f"{filename}.pdf"
 
-    s = _styles()
-    story = []
-    generated_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    story.append(Paragraph(_safe_para_text(title), s["title"]))
-    if author:
-        story.append(Paragraph(_safe_para_text(f"Author: {author}"), s["author"]))
-    story.append(Paragraph(_safe_para_text(f"Generated: {generated_dt} UTC"), s["meta"]))
-    story.append(Spacer(1, 0.24 * cm))
-    if summary:
-        story.append(Paragraph(_safe_para_text(summary), s["summary"]))
-        story.append(Spacer(1, 0.18 * cm))
-
-    for idx, section in enumerate(normalized_sections):
-        heading = section.get("heading", "")
-        content = section.get("content", "")
-        section_flowables = _build_section_flowables(heading, content, s)
-        if section_flowables:
-            story.extend(section_flowables)
-        if idx < len(normalized_sections) - 1:
-            story.append(Spacer(1, 0.11 * cm))
-
+    # --- Fetch images ---
     downloaded_images = []
     image_errors = []
     if isinstance(image_urls, list):
@@ -998,53 +1130,50 @@ def _build_pdf(args: dict) -> tuple[bytes, dict]:
             except Exception as e:
                 image_errors.append(f"image {idx + 1}: {e}")
 
-    if downloaded_images:
-        story.append(PageBreak())
-        story.append(Paragraph("Image Gallery", s["h2"]))
-        story.append(Paragraph("Selected visuals referenced by source URL.", s["body"]))
-        story.append(Spacer(1, 0.15 * cm))
-        for idx, (src_url, image_data) in enumerate(downloaded_images, start=1):
-            story.append(Paragraph(f"Image {idx}", s["small_h2"]))
-            src_safe = _safe_para_text(src_url)
-            story.append(
-                Paragraph(f'<link href="{src_safe}" color="#0f766e">{src_safe}</link>', s["source"])
-            )
-            img_flowable = PdfImage(io.BytesIO(image_data))
-            img_flowable._restrictSize(16.2 * cm, 10.2 * cm)
-            story.append(img_flowable)
-            story.append(Spacer(1, 0.35 * cm))
-    elif require_images and strict_mode:
+    if not downloaded_images and require_images and strict_mode:
         image_error_text = "; ".join(image_errors) if image_errors else "no downloadable image"
         raise ValueError(f"quality validation failed: required image missing ({image_error_text})")
 
-    if isinstance(source_urls, list) and source_urls:
-        story.append(PageBreak())
-        story.append(Paragraph("Sources", s["h2"]))
-        story.append(Paragraph("Reference links used for facts and context.", s["body"]))
-        story.append(Spacer(1, 0.14 * cm))
-        for src in source_urls:
-            if isinstance(src, str) and src.strip():
-                safe_src = _safe_para_text(src.strip())
-                story.append(
-                    Paragraph(
-                        f'<link href="{safe_src}" color="#0f766e">{safe_src}</link>',
-                        s["source"],
-                    )
-                )
+    # --- Fetch cover image ---
+    cover_image_url = (args.get("cover_image_url") or "").strip()
+    cover_image_b64 = None
+    if cover_image_url:
+        try:
+            data = _fetch_image(cover_image_url)
+            cover_image_b64 = "data:image/jpeg;base64," + base64.b64encode(data).decode()
+        except Exception as e:
+            log.warning("cover image failed: %s", e)
+    # If no explicit cover image but we have downloaded images, use first as cover.
+    if not cover_image_b64 and downloaded_images:
+        cover_image_b64 = "data:image/jpeg;base64," + base64.b64encode(downloaded_images[0][1]).decode()
 
-    output = io.BytesIO()
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=A4,
-        leftMargin=2.0 * cm,
-        rightMargin=2.0 * cm,
-        topMargin=1.8 * cm,
-        bottomMargin=1.6 * cm,
+    # --- Distribute remaining images across sections ---
+    section_images: dict[int, list[dict]] = {}
+    remaining_images = downloaded_images[1:] if cover_image_b64 and downloaded_images else downloaded_images
+    if remaining_images and normalized_sections:
+        # Spread images evenly across sections (skip first section which is near cover).
+        start_idx = min(1, len(normalized_sections) - 1)
+        slots = list(range(start_idx, len(normalized_sections)))
+        for img_idx, (src_url, img_data) in enumerate(remaining_images):
+            sec_idx = slots[img_idx % len(slots)] if slots else 0
+            b64 = "data:image/jpeg;base64," + base64.b64encode(img_data).decode()
+            section_images.setdefault(sec_idx, []).append({
+                "src": b64,
+                "caption": escape(src_url),
+            })
+
+    # --- Build HTML and render PDF ---
+    html = _build_html(
         title=title,
+        summary=summary,
+        author=author,
+        sections=normalized_sections,
+        source_urls=source_urls if isinstance(source_urls, list) else [],
+        template=template,
+        cover_image_b64=cover_image_b64,
+        section_images=section_images,
     )
-    doc._report_title = title
-    doc.build(story, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
-    pdf_bytes = output.getvalue()
+    pdf_bytes = weasyprint.HTML(string=html, base_url="/app/").write_pdf()
 
     meta = {
         "filename": filename,

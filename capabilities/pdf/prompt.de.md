@@ -1,6 +1,6 @@
 # PDF-Capability — Tool-Referenz
 
-Du kannst mit einem Tool PDF-Berichte erzeugen:
+Du kannst mit einem Tool ansprechend gestaltete PDF-Berichte erzeugen:
 
 - **pdf__create_pdf_document** — erstellt ein PDF aus Titel, Zusammenfassung,
   Abschnitten sowie optionalen Quellen- und Bild-URLs.
@@ -24,6 +24,7 @@ Nutze fuer Abschnitte immer diese kanonische Struktur:
   ],
   "source_urls": ["https://example.com/quelle"],
   "image_urls": ["https://example.com/bild.jpg"],
+  "cover_image_url": "https://example.com/hero.jpg",
   "author": "Optionaler Autor",
   "filename": "report.pdf"
 }
@@ -35,23 +36,34 @@ Wichtig:
 - Pro Abschnitt exakt die Keys `heading` und `content` verwenden.
 - Keine alternativen Keys wie `title/body`, `name/text` oder lokalisierte Key-Namen verwenden.
 - Gesamten Fliesstext in `sections[].content` schreiben. Kein eingebettetes JSON und keine Tool-Logs im Inhalt.
-- Nur Plaintext verwenden. Fuer Listen pro Zeile einen Bulletpunkt nutzen (z. B. `- Punkt` oder `* Punkt`).
-- Zwischen Absaetzen Leerzeilen setzen, damit das Layout sauber bleibt.
-- Fuer Vergleichsdaten einen Markdown-Tabellenblock in `content` nutzen:
-  `| Spalte A | Spalte B |` plus Trennerzeile `|---|---|` und Datenzeilen.
 - Fuer zuverlaessige Ergebnisse `strict_mode: true` setzen und bei Validierungsfehlern
   nur die Tool-Argumente korrigiert erneut senden.
 - `require_images: true` setzen, wenn visuelle Inhalte erwartet werden
   (z. B. bei Stadtportraets).
 
+## Reichhaltige Inhaltsformatierung
+
+Abschnittsinhalte unterstuetzen diese Formatierungen fuer visuell ansprechende Ausgaben:
+
+- **Absaetze**: Klartext mit Leerzeilen zwischen Absaetzen.
+- **Listen**: Pro Zeile ein Aufzaehlungspunkt mit `- Punkt` oder `* Punkt`. Nummerierte Listen mit `1. Punkt`.
+- **Fett/Kursiv**: `**fetter Text**` und `*kursiver Text*` fuer Hervorhebungen bei Kennzahlen und Begriffen.
+- **Zitat-Hervorhebungen**: Zeilen mit `> ` am Anfang werden als farbige Infoboxen dargestellt.
+  Nutze diese fuer Kernfakten, bemerkenswerte Zahlen oder wichtige Erkenntnisse.
+  Beispiel: `> Mit rund 48.000 Einwohnern ist Duelmen die groesste Stadt im Kreis Coesfeld.`
+- **Markdown-Tabellen**: `| Spalte A | Spalte B |` plus Trennerzeile `|---|---|` und Datenzeilen.
+- **Bilder**: Ueber `image_urls` Fotos einbinden. Das erste Bild wird als grosses Titelbild genutzt;
+  weitere Bilder werden inline ueber die Abschnitte verteilt.
+- **Titelbild**: Ueber `cover_image_url` ein bestimmtes Hero-Bild fuer Seite 1 festlegen.
+
 ## Template-Qualitaetsmodi
 
 Geeignete Vorlagen:
 
-- `generic`: keine festen Abschnittspruefungen.
-- `city_profile`: Abschnitte zu Ueberblick, Lage/Geografie und Highlights/Sehenswuerdigkeiten.
-- `research_summary`: Abschnitte zu Ziel/Scope, Ergebnissen und Quellen/Evidenz.
-- `project_status`: Abschnitte zu Status/Fortschritt, Risiken/Issues und naechsten Schritten.
+- `generic`: keine festen Abschnittspruefungen. Tuerkises Farbschema.
+- `city_profile`: Abschnitte zu Ueberblick, Lage/Geografie und Highlights/Sehenswuerdigkeiten. Warmes Bernstein-Farbschema.
+- `research_summary`: Abschnitte zu Ziel/Scope, Ergebnissen und Quellen/Evidenz. Blaues akademisches Farbschema.
+- `project_status`: Abschnitte zu Status/Fortschritt, Risiken/Issues und naechsten Schritten. Indigo-Farbschema.
 
 Bei `strict_mode: true` fuehren fehlende Pflichtabschnitte zu einem Tool-Fehler.
 Bei `require_images: true` fuehrt das Fehlen gueltiger/ladbarer Bilder ebenfalls zu einem Tool-Fehler.
@@ -79,6 +91,8 @@ Fuer die Weitergabe:
 
 - Abschnitte klar und faktenbasiert schreiben.
 - Fuer umfassende Berichte eher 5-9 Abschnitte statt 1-2 extrem langer Bloecke nutzen.
+- Pro Bericht 2-4 `> Zitat`-Hervorhebungen fuer Kernfakten nutzen — das schafft visuelle Abwechslung.
+- `**Fett**` fuer wichtige Zahlen, Namen und Begriffe in Absaetzen verwenden.
 - Bei Web-Recherche immer Quellen-URLs aufnehmen.
 - Lieber wenige, passende Bilder statt vieler Bilder.
 - Fakten nicht doppelt in Summary und Abschnittstext wiederholen.

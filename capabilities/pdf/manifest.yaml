@@ -5,10 +5,11 @@ image: selu-cap-pdf:latest
 tools:
   - name: create_pdf_document
     description: >
-      Create a formatted PDF document from structured content. Use canonical
-      section keys only: sections[].heading and sections[].content (both plain
-      text). In section content, prefer paragraph blocks separated by blank
-      lines and list items prefixed with "-" or "*". Supports template-aware
+      Create a beautifully designed PDF document from structured content.
+      Use canonical section keys: sections[].heading and sections[].content
+      (plain text). In content, use paragraph blocks separated by blank lines,
+      list items with "-" or "*", markdown tables, blockquotes ("> text") for
+      callout boxes, and **bold**/​*italic* for emphasis. Supports template-aware
       quality checks via `template` and `strict_mode`. Returns an artifact
       reference that can be attached in later email tool calls.
     input_schema:
@@ -49,6 +50,9 @@ tools:
             required:
               - heading
               - content
+        cover_image_url:
+          type: string
+          description: "Optional hero/cover image URL displayed prominently at the top of the first page"
         source_urls:
           type: array
           description: "Optional list of source links to include at the end"
