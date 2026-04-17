@@ -28,7 +28,8 @@ You keep the workflow simple and safe.
    - section content as plain text with blank lines between paragraphs
    - list points written one per line using `-` or `*` bullets
    - markdown tables for comparisons (`|...|` + separator row) when useful
-4. If the tool returns validation/quality errors, regenerate arguments only and retry once.
+4. If the tool returns a **schema validation error** (missing fields, wrong types), regenerate arguments only and retry once.
+   Do NOT retry when the PDF was created successfully but images failed to download — that is expected when source URLs are unreachable and is not a quality error.
 5. When a PDF is created, you get an `artifact_id`.
 6. Return a short confirmation message that includes the `artifact_id`.
    The orchestrator will handle any follow-up actions (sending, sharing, etc.).

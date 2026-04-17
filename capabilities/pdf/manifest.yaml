@@ -69,6 +69,7 @@ tools:
         - title
         - sections
     recommended_policy: allow
+    terminal_on_success: true
 
 network:
   mode: any
